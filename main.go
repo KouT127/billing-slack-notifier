@@ -2,6 +2,7 @@ package main
 
 import (
 	"cloud.google.com/go/bigquery"
+	"cloud.google.com/go/compute/metadata"
 	"context"
 	"fmt"
 	"github.com/slack-go/slack"
@@ -9,14 +10,16 @@ import (
 	"google.golang.org/api/option"
 	"log"
 	"os"
+	"time"
 )
 
 func main() {
-	client := NewSlackClient()
+	slackClient := NewSlackClient()
+	bigQueryClient := NewBigQueryClient()
 
-	results := queryBill()
+	results := bigQueryClient.queryBill()
 	for _, result := range results {
-		err := client.sendMessage(result)
+		err := slackClient.sendMessage(result)
 		if err != nil {
 			log.Fatalf("%v", err)
 		}
@@ -24,7 +27,7 @@ func main() {
 }
 
 type SlackClient struct {
-	slack.Client
+	*slack.Client
 	channelID string
 }
 
@@ -33,7 +36,7 @@ func NewSlackClient() *SlackClient {
 	channelID := os.Getenv("CHANNEL_ID")
 	api := slack.New(token)
 	return &SlackClient{
-		*api,
+		api,
 		channelID,
 	}
 }
@@ -50,29 +53,40 @@ func (c *SlackClient) sendMessage(msg string) error {
 	return nil
 }
 
-func queryBill() []string {
+type BigQueryClient struct {
+	*bigquery.Client
+}
+
+func NewBigQueryClient() *BigQueryClient {
 	ctx := context.Background()
 	json := os.Getenv("SERVICE_ACCOUNT_JSON")
-	projectID := os.Getenv("PROJECT_ID")
+	projectID, err := metadata.ProjectID()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	client, err := bigquery.NewClient(ctx, projectID, option.WithCredentialsJSON([]byte(json)))
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
+	return &BigQueryClient{
+		client,
+	}
+}
 
-	query := fmt.Sprintf("SELECT "+
-		"invoice.month,"+
-		"SUM(cost)"+
-		"+ SUM(IFNULL((SELECT SUM(c.amount) "+
-		"FROM UNNEST(credits) c), 0))"+
-		"AS total, (SUM(CAST(cost * 1000000 AS int64)) + SUM(IFNULL((SELECT SUM(CAST(c.amount * 1000000 as int64)) "+
-		"FROM UNNEST(credits) c), 0))) / 1000000 "+
-		"AS total_exact "+
-		"FROM `%s.biling.gcp_billing_export_v1_01C98C_7E00E6_392CCC` "+
-		"GROUP BY 1 "+
-		"ORDER BY 1 ASC;", projectID)
+func (c *BigQueryClient) queryBill() []string {
+	ctx := context.Background()
+	projectID, err := metadata.ProjectID()
+	if err != nil {
+		log.Fatal(err)
+	}
+	tableName := "biling"
+	splitTableName := os.Getenv("SPLIT_TABLE_NAME")
+	referenceTable := formatReferenceTableName(projectID, tableName, splitTableName)
+	formattedMonth := convertFormattedFromTime(time.Now())
 
-	q := client.Query(query)
+	query := buildBillQuery(referenceTable, formattedMonth)
+	q := c.Query(query)
 
 	rows, err := q.Read(ctx)
 	if err != nil {
@@ -95,4 +109,27 @@ func queryBill() []string {
 	}
 
 	return results
+}
+
+func convertFormattedFromTime(t time.Time) string {
+	return t.Format("200601")
+}
+
+func formatReferenceTableName(projectID, tableName, splitTableName string) string {
+	return fmt.Sprintf("%s.%s.%s", projectID, tableName, splitTableName)
+}
+
+func buildBillQuery(referenceTable, formattedMonth string) string {
+	return fmt.Sprintf("SELECT "+
+		"invoice.month,"+
+		"SUM(cost)"+
+		"+ SUM(IFNULL((SELECT SUM(c.amount) "+
+		"FROM UNNEST(credits) c), 0))"+
+		"AS total, (SUM(CAST(cost * 1000000 AS int64)) + SUM(IFNULL((SELECT SUM(CAST(c.amount * 1000000 as int64)) "+
+		"FROM UNNEST(credits) c), 0))) / 1000000 "+
+		"AS total_exact "+
+		"FROM `%s` "+
+		"WHERE invoice.month = '%s' "+
+		"GROUP BY 1 "+
+		"ORDER BY 1 ASC;", referenceTable, formattedMonth)
 }
