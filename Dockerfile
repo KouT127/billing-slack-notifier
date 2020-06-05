@@ -5,7 +5,7 @@ RUN go mod download
 
 COPY . ./
 
-RUN go build -mod=readonly -v -o app ./
+RUN go build -v -o app ./server
 
 FROM debian:buster-slim
 RUN set -x && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \

@@ -1,57 +1,16 @@
-package main
+package module
 
 import (
 	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/compute/metadata"
 	"context"
 	"fmt"
-	"github.com/slack-go/slack"
+	"github.com/KouT127/billing-slack-notifier/config"
 	"google.golang.org/api/iterator"
-	"google.golang.org/api/option"
 	"log"
 	"os"
 	"time"
 )
-
-func main() {
-	slackClient := NewSlackClient()
-	bigQueryClient := NewBigQueryClient()
-
-	results := bigQueryClient.queryBill()
-	for _, result := range results {
-		err := slackClient.sendMessage(result)
-		if err != nil {
-			log.Fatalf("%v", err)
-		}
-	}
-}
-
-type SlackClient struct {
-	*slack.Client
-	channelID string
-}
-
-func NewSlackClient() *SlackClient {
-	token := os.Getenv("SLACK_TOKEN")
-	channelID := os.Getenv("CHANNEL_ID")
-	api := slack.New(token)
-	return &SlackClient{
-		api,
-		channelID,
-	}
-}
-
-func (c *SlackClient) sendMessage(msg string) error {
-	opts := []slack.MsgOption{
-		slack.MsgOptionText(msg, true),
-	}
-	channel, _, _, err := c.SendMessage(c.channelID, opts...)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("channel: %s", channel)
-	return nil
-}
 
 type BigQueryClient struct {
 	*bigquery.Client
@@ -59,13 +18,7 @@ type BigQueryClient struct {
 
 func NewBigQueryClient() *BigQueryClient {
 	ctx := context.Background()
-	json := os.Getenv("SERVICE_ACCOUNT_JSON")
-	projectID, err := metadata.ProjectID()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	client, err := bigquery.NewClient(ctx, projectID, option.WithCredentialsJSON([]byte(json)))
+	client, err := bigquery.NewClient(ctx, config.ProjectID)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -74,17 +27,16 @@ func NewBigQueryClient() *BigQueryClient {
 	}
 }
 
-func (c *BigQueryClient) queryBill() []string {
+func (c *BigQueryClient) FindBill() []string {
 	ctx := context.Background()
 	projectID, err := metadata.ProjectID()
 	if err != nil {
 		log.Fatal(err)
 	}
-	tableName := "biling"
+	tableName := os.Getenv("TABLE_NAME")
 	splitTableName := os.Getenv("SPLIT_TABLE_NAME")
 	referenceTable := formatReferenceTableName(projectID, tableName, splitTableName)
 	formattedMonth := convertFormattedFromTime(time.Now())
-
 	query := buildBillQuery(referenceTable, formattedMonth)
 	q := c.Query(query)
 
