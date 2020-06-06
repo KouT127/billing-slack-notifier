@@ -1,11 +1,13 @@
-PROJECT_NO=[YOUR_PROJECT_NO]
-PROJECT_ID=[YOUR_PROJECT_ID]
-ENDPOINT=[YOU_ENDPOINT]
-CONTAINER_NAME=[CONTAINER_NAME]
-SERVICE_NAME=[YOUR_SERVICE_NAME]
+PROJECT_ID=
+PROJECT_NO=
+ENDPOINT=
+CONTAINER_NAME=
+SERVICE_NAME=
+SPLIT_TABLE_NAME=
 
 # Iamの設定
-initialize:
+first-deploy:
+	deploy
 	gcloud run services add-iam-policy-binding ${SERVICE_NAME} \
         --member=serviceAccount:cloud-run-scheduler-invoker@${PROJECT_ID}.iam.gserviceaccount.com \
 	    --role=roles/run.invoker --platform managed
@@ -21,7 +23,6 @@ initialize:
 deploy:
 	gcloud builds submit --tag gcr.io/${PROJECT_ID}/${CONTAINER_NAME}
 	gcloud run deploy ${SERVICE_NAME} --image gcr.io/${PROJECT_ID}/${CONTAINER_NAME} \
-	       --platform managed --update-env-vars SPLIT_TABLE_NAME=${SPLIT_TABLE_NAME},TABLE_NAME=biling
 	       --platform managed --update-env-vars SPLIT_TABLE_NAME=${SPLIT_TABLE_NAME},TABLE_NAME=biling,MODE=release
 
 # Schedulerの設定
