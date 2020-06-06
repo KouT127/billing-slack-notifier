@@ -1,9 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"github.com/KouT127/billing-slack-notifier/config"
+	"github.com/KouT127/billing-slack-notifier/handler"
 	"github.com/KouT127/billing-slack-notifier/module"
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"log"
 	"net/http"
 	"os"
@@ -11,32 +13,36 @@ import (
 
 func main() {
 	config.Configure()
-	http.HandleFunc("/notification", notificationHandler)
+
+	m, err := module.NewSecretManager()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	token, err := m.AccessSecret("SLACK_TOKEN")
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	channelID, err := m.AccessSecret("CHANNEL_ID")
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	bigQueryClient, err := module.NewBigQueryClient()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	slackClient := module.NewSlackClient(token, channelID)
+	h := handler.NewHandler(slackClient, bigQueryClient)
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
-		log.Printf("Defaulting to port %s", port)
 	}
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.Post("/notification", h.NotificationHandler)
 	log.Printf("Listening on port %s", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatal(err)
 	}
-}
-
-func notificationHandler(w http.ResponseWriter, r *http.Request) {
-	slackClient := module.NewSlackClient()
-	bigQueryClient := module.NewBigQueryClient()
-
-	results := bigQueryClient.FindBill()
-	for _, result := range results {
-		err := slackClient.NotifyMessage(result)
-		if err != nil {
-			log.Fatalf("%v", err)
-		}
-	}
-
-	log.Println("successful notification to slack")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "ok")
-	return
 }

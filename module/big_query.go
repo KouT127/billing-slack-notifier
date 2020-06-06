@@ -16,15 +16,15 @@ type BigQueryClient struct {
 	*bigquery.Client
 }
 
-func NewBigQueryClient() *BigQueryClient {
+func NewBigQueryClient() (*BigQueryClient, error) {
 	ctx := context.Background()
-	client, err := bigquery.NewClient(ctx, config.ProjectID)
+	client, err := bigquery.NewClient(ctx, config.ProjectID, config.GCPClientOptions...)
 	if err != nil {
-		log.Fatalf("%v", err)
+		return nil, err
 	}
 	return &BigQueryClient{
 		client,
-	}
+	}, nil
 }
 
 func (c *BigQueryClient) FindBill() []string {
@@ -72,16 +72,18 @@ func formatReferenceTableName(projectID, tableName, splitTableName string) strin
 }
 
 func buildBillQuery(referenceTable, formattedMonth string) string {
-	return fmt.Sprintf("SELECT "+
-		"invoice.month,"+
-		"SUM(cost)"+
-		"+ SUM(IFNULL((SELECT SUM(c.amount) "+
-		"FROM UNNEST(credits) c), 0))"+
-		"AS total, (SUM(CAST(cost * 1000000 AS int64)) + SUM(IFNULL((SELECT SUM(CAST(c.amount * 1000000 as int64)) "+
-		"FROM UNNEST(credits) c), 0))) / 1000000 "+
-		"AS total_exact "+
-		"FROM `%s` "+
-		"WHERE invoice.month = '%s' "+
-		"GROUP BY 1 "+
-		"ORDER BY 1 ASC;", referenceTable, formattedMonth)
+	return fmt.Sprintf(BillQuery, referenceTable, formattedMonth)
 }
+
+const BillQuery = "SELECT " +
+	"invoice.month," +
+	"SUM(cost)" +
+	"+ SUM(IFNULL((SELECT SUM(c.amount) " +
+	"FROM UNNEST(credits) c), 0))" +
+	"AS total, (SUM(CAST(cost * 1000000 AS int64)) + SUM(IFNULL((SELECT SUM(CAST(c.amount * 1000000 as int64)) " +
+	"FROM UNNEST(credits) c), 0))) / 1000000 " +
+	"AS total_exact " +
+	"FROM `%s` " +
+	"WHERE invoice.month = '%s' " +
+	"GROUP BY 1 " +
+	"ORDER BY 1 ASC;"
