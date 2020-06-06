@@ -22,6 +22,7 @@ deploy:
 	gcloud builds submit --tag gcr.io/${PROJECT_ID}/${CONTAINER_NAME}
 	gcloud run deploy ${SERVICE_NAME} --image gcr.io/${PROJECT_ID}/${CONTAINER_NAME} \
 	       --platform managed --update-env-vars SPLIT_TABLE_NAME=${SPLIT_TABLE_NAME},TABLE_NAME=biling
+	       --platform managed --update-env-vars SPLIT_TABLE_NAME=${SPLIT_TABLE_NAME},TABLE_NAME=biling,MODE=release
 
 # Schedulerの設定
 setup-scheduler:

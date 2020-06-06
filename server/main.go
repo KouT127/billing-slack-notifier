@@ -14,7 +14,7 @@ import (
 func main() {
 	config.Configure()
 
-	m, err := module.NewSecretManager()
+	m, err := module.NewSecretManager(config.ProjectNo, config.GCPClientOptions...)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}

@@ -23,14 +23,12 @@ func Configure() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	isRelase := os.Getenv("RELEASE") == "release"
-	if !isRelase {
+	isRelease := os.Getenv("MODE") == "release"
+	if !isRelease {
 		GCPClientOptions = []option.ClientOption{
 			option.WithCredentialsJSON([]byte(os.Getenv("SERVICE_ACCOUNT_JSON"))),
 		}
 	}
-
 }
 
 func MustGetEnv(key string) (string, error) {
