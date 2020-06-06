@@ -1,5 +1,7 @@
 # billing-slack-notifier
 
+go 1.13 
+
 ## Edit Makefile
 
 Edit your param
